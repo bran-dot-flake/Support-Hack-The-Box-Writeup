@@ -96,7 +96,7 @@ I collected Active Directory relationships with BloodHound Python, imported the 
 - `SUPPORT@SUPPORT.HTB` is a member of **Shared Support Accounts**.
 - **Shared Support Accounts** has **`GenericAll`** over `DC.SUPPORT.HTB`.
 
-![BloodHound relationship showing support, Shared Support Accounts, and the domain controller](images/bloodhound-path.svg)
+![BloodHound relationship showing support, Shared Support Accounts, and the domain controller](images/bloodhound.png)
 
 *Figure 1 — The `support` user inherits `GenericAll` over the domain controller's computer object through group membership.*
 
