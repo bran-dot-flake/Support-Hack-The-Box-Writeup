@@ -192,7 +192,7 @@ impacket-getST \
 ```
 
 <p align="center">
-  <img src="images/kerberos-delegation.svg"/>
+  <img src="images/ADdiagram.drawio.svg"/>
   <br/>
   <em>Figure 2: ATTACKER$ authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller</em>
 </p>
