@@ -45,7 +45,7 @@ monodis UserInfo.exe > userinfo.il
 grep -niE 'password|armando|ldstr' userinfo.il
 ```
 
-To make sure I understood the process, I recreated the decoding in Python:
+To make sure I how the password was decoded, I recreated it in Python:
 
 ```python
 import base64
@@ -66,7 +66,7 @@ print(password.decode())
 nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz
 ```
 
-This gave me the password for `support\ldap`. It wasn't an administrator account, but it was enough to query AD. I searched for the `support` user and found a password stored in the account's `info` attribute.
+This gave the password for `support\ldap`. It wasn't an administrator account, but it was enough to query AD. I searched for the `support` user and found a password stored in the account's `info` attribute.
 
 ```bash
 ldapsearch -x -H ldap://10.129.133.80 \
@@ -89,7 +89,7 @@ At that point I had the user flag, but not administrative access.
 
 ## BloodHound: Finding the Privilege Escalation Path
 
-I collected Active Directory relationships with BloodHound Python, imported the ZIP into BloodHound, and searched for the `support` account. The path to the domain controller was short:
+I collected Active Directory relationships with BloodHound Python, imported the ZIP into BloodHound, and searched for the `support` account. The path to the domain controller was:
 
 - `SUPPORT@SUPPORT.HTB` is a member of **Shared Support Accounts**.
 - **Shared Support Accounts** has **`GenericAll`** over `DC.SUPPORT.HTB`.
@@ -102,7 +102,7 @@ I collected Active Directory relationships with BloodHound Python, imported the 
 
 
 
-I knew `GenericAll` meant broad control over the object, but I initially associated that sort of privilege with users. Here, the target was a **computer object**, `DC$`, suggesting an attack involving delegation.
+`GenericAll` is broad control over the object, but I initially associated that sort of privilege with users. Here, the target was a **computer object**, `DC$`, suggesting an attack involving delegation.
 
 ## Machine Accounts & RBCD
 
