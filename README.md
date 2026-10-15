@@ -192,9 +192,9 @@ impacket-getST \
 ```
 
 <p align="center">
-  <img src="images/ADdiagram.drawio.svg"/>
+  <img src="images/ADdiagram.drawio.svg" width="800"/>
   <br/>
-  <em>Figure 2: ATTACKER$ authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller</em>
+  <em>Figure 2: ATTACKER$ authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller.</em>
 </p>
 
 This is where I had to sort out the difference between a **TGT** and a **service ticket**:
