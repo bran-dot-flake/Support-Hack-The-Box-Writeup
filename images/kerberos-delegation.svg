@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="340" viewBox="0 0 1080 340" role="img" aria-label="Controlled ATTACKER computer account authenticates to KDC, makes S4U requests, receives Administrator CIFS service ticket for the domain controller">
+<rect width="1080" height="340" fill="#000000"/>
+<g stroke="#ed1c24" stroke-width="3" fill="#ffffff">
+  <rect x="36" y="45" width="267" height="108" rx="10"/>
+  <rect x="407" y="45" width="266" height="108" rx="10"/>
+  <rect x="777" y="45" width="267" height="108" rx="10"/>
+  <rect x="342" y="238" width="396" height="81" rx="10"/>
+</g>
+<g font-family="Arial,Helvetica,sans-serif" fill="#000000" text-anchor="middle">
+  <text x="169" y="90" font-size="26" font-weight="700">ATTACKER$</text>
+  <text x="169" y="118" font-size="17">Controlled computer</text>
+  <text x="540" y="88" font-size="27" font-weight="700">KDC</text>
+  <text x="540" y="116" font-size="17">Kerberos requests</text>
+  <text x="910" y="90" font-size="27" font-weight="700">DC$</text>
+  <text x="910" y="118" font-size="17">CIFS service</text>
+  <text x="540" y="274" font-size="24" font-weight="700">Administrator CIFS ticket</text>
+  <text x="540" y="301" font-size="17">cifs/dc.support.htb</text>
+</g>
+<g stroke="#ed1c24" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M303 99 H397"/>
+  <path d="M385 89 L399 99 L385 109"/>
+  <path d="M540 153 V229"/>
+  <path d="M530 216 L540 230 L550 216"/>
+  <path d="M738 278 H910 V163"/>
+  <path d="M900 176 L910 162 L920 176"/>
+</g>
+<g fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="middle">
+  <text x="352" y="83">TGT / S4U</text>
+  <text x="651" y="205">S4U2Self + S4U2Proxy</text>
+</g>
+</svg>
