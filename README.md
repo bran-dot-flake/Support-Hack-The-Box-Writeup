@@ -12,7 +12,7 @@ by: Brandon Chaney
 
 ## Overview
 
-Support starts with an accessible SMB share containing a small .NET application, `UserInfo.exe`. Inspection of the program revealed credentials for an LDAP account, which tied to the `support` user and lead to obtaining a reverse shell through EvilWinRM.
+Support starts with an accessible SMB share containing a small .NET application, `UserInfo.exe`. Inspection of the program revealed credentials for an LDAP account, which tied to the `support` user and lead to obtaining a reverse shell through Evil-WinRM.
 
 After the foothold, BloodHound showed that `support` belonged to a group with `GenericAll` over the domain controller's computer object. I hadn't worked through this kind of computer takeover before, so I used this machine to understand how machine accounts, Resource-Based Constrained Delegation (RBCD), and Kerberos service tickets could lead to domain takeover.
 
@@ -64,7 +64,7 @@ Inspecting the .NET code, I followed how the application handled its stored pass
 └─❯ grep -niE 'password|armando|ldstr' userinfo.il
 ```
 
-To recreate how password was decoded, I worked through each step identified in Python:
+To recreate how password was decoded, I used Python to reverse the transformation that the `UserInfo.exe` application itself used. The important parts of these operations were 1. Decode the base64 2. Revert XOR by applying its value twice 3. Turn the password into readable text using .decode.
 
 ```python
 import base64
@@ -125,9 +125,7 @@ I collected Active Directory relationships with BloodHound Python, imported the 
   <em>Figure 1: The support user inherits GenericAll over the domain controller's computer object through group membership.</em>
 </p>
 
-
-
-`GenericAll` is broad control over the object, but I initially associated that sort of privilege with users. Here, the target was a **computer object**, `DC$`, suggesting an attack involving delegation.
+Having `GenericAll` over the DC$ computer account gives me control over the DC's object in AD. Because of this, I could modify that attribute on the domain controller's computer object, and likely form an attack involving delegation.
 
 ## Machine Accounts & RBCD
 
