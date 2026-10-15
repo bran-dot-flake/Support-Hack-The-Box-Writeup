@@ -129,7 +129,7 @@ Having `GenericAll` over the DC$ computer account gives me control over the DC's
 
 ## Machine Accounts & RBCD
 
-Before creating anything, I checked the domain's `ms-DS-MachineAccountQuota` attribute. It determines how many machine accounts an ordinary domain user is allowed to create by default.
+Before creating anything, I checked the domain's `ms-DS-MachineAccountQuota` attribute. The attribute determines how many machine accounts an ordinary domain user is allowed to create by default.
 
 ```powershell
 *Evil-WinRM* PS C:\Users\support\Documents> ([ADSI]"LDAP://DC=SUPPORT,DC=HTB")."ms-DS-MachineAccountQuota"
@@ -139,9 +139,9 @@ Before creating anything, I checked the domain's `ms-DS-MachineAccountQuota` att
 10
 ```
 
-The default AD value `10` suggested I could create a computer account of my own (the . **This alone doesn't grant administrator access.** The important combination was being able to create a controlled machine account *and* having `GenericAll` over `DC$`.
+The default AD value `10` suggested I could create a computer account of my own. This on its own doesn't grant administrator access but since I could create and use a controlled computer account **and** have `GenericAll` over `DC$`, the promise of compromise was much more significant.
 
-The first `impacket-addcomputer` attempts failed with SMB login errors. NetExec confirmed the credentials were valid, so the password wasn't the issue. I eventually got it working by specifying the domain controller hostname and separating the NetBIOS domain from the DNS domain name.
+The first `impacket-addcomputer` I tried attempted failed with SMB login errors. I had NetExec confirm the credentials were valid, so the password wasn't the issue. I eventually got it working by playing with fields and specifying the domain controller hostname and separating the NetBIOS domain from the DNS domain name.
 
 ```text
 # /etc/hosts
@@ -164,7 +164,7 @@ The first `impacket-addcomputer` attempts failed with SMB login errors. NetExec 
 [*] Successfully added machine account ATTACKER$ with password IAMEVIL!!!.
 ```
 
-Next I used my `GenericAll` rights to edit `DC$`'s `msDS-AllowedToActOnBehalfOfOtherIdentity` attribute. This is the setting used by **Resource-Based Constrained Delegation (RBCD)** to determine which accounts may act on behalf of other users when accessing the target service.
+I then used my `GenericAll` rights to edit `DC$`'s `msDS-AllowedToActOnBehalfOfOtherIdentity` attribute. This is the setting used by **Resource-Based Constrained Delegation (RBCD)** to determine which accounts can act on behalf of other users when using the target service.
 
 ```bash
 ┌──[brandonc@parrot]─[~]
@@ -224,7 +224,7 @@ With RBCD configured, I could use the controlled `ATTACKER$` account to request 
   <em>Figure 2: ATTACKER$ authenticates to the KDC, uses S4U delegation to impersonate Administrator, and receives a CIFS ticket for the domain controller.</em>
 </p>
 
-This is where I had to sort out the difference between a **TGT** and a **service ticket**:
+I was still confusing **TGTs** and **Service Tickets** so I did some research on the differences:
 
 - A **TGT** lets an authenticated identity request tickets for services.
 - A **service ticket** is used to authenticate to a particular service. Mine was for `cifs/dc.support.htb`, which is associated with SMB.
@@ -243,7 +243,7 @@ One related tool worth remembering is `ticketConverter.py`, which converts betwe
 
 ## SYSTEM Access
 
-The last step was to use the CIFS ticket with Impacket's PsExec implementation. I used `-k` for Kerberos authentication and `-no-pass` to use the cached ticket without supplying a password.
+The last step in the post-exploitation chain was to use the CIFS ticket with Impacket's PsExec implementation. I used `-k` for Kerberos authentication and `-no-pass` to use the cached ticket without giving a password.
 
 ```bash
 ┌──[brandonc@parrot]─[~]
@@ -263,13 +263,11 @@ C:\Windows\system32> hostname
 dc
 ```
 
-I had SYSTEM access on the domain controller. I retrieved the root flag with the Windows `type` command:
+I had SYSTEM access on the domain controller. I retrieved the root flag with the Windows `type` command shortly after:
 
 ```cmd
 C:\Windows\system32> type C:\Users\Administrator\Desktop\root.txt
 ```
-
-*Root flag omitted from this public writeup.*
 
 ## Key Findings
 
